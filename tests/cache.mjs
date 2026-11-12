@@ -6,6 +6,8 @@ const qa = process.env.GFL_QA_ROOT;
 const { chromium } = await import(qa ? `${qa}/node_modules/playwright-core/index.mjs` : 'playwright-core');
 let legacy = true;
 const requests = [];
+const entryHTML = await readFile(new URL('../dist/review/index.html', import.meta.url), 'utf8');
+const appAsset = new URL(entryHTML.match(/src="([^"]*app\.js[^"]*)"/)[1], 'http://localhost/review/');
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push(url.pathname + url.search);
@@ -39,7 +41,8 @@ try {
   assert.equal(await page.locator('[data-preference]').count(), 0);
   for (const name of ['app.js','core.js','demo.js','config.js','taxonomy.js']) {
     assert.equal(requests.filter(x => x === `/review/${name}`).length, 1, `Old ${name} must remain cached`);
-    assert.ok(requests.includes(`/review/${name}?v=20261112-clean-links-v4`), `${name} needs a versioned URL`);
+    const expected = name === 'app.js' ? appAsset.pathname + appAsset.search : `/review/${name}?v=20261112-clean-links-v4`;
+    assert.ok(requests.includes(expected), `${name} needs a versioned URL`);
   }
   await page.locator('[data-best="A"]').check();
   await page.getByRole('button', { name: /Submit this case/ }).click();

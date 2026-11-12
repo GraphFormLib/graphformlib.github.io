@@ -5,7 +5,7 @@ Live workspace: https://graphformlib.github.io/review/ (GitHub Pages enabled wit
 
 Both workflows begin with a short introduction using verbatim definitions from objective-library-v3, remembered for this reviewer/browser and always reopenable. The answer sheet repeats canonical definitions and asks whether the document reasonably supports the listed annotations; it does not require proving uniqueness. See REVIEW_RUBRIC.txt.
 
-The two workflows are document quality (naturalness/realism first, then an answer-sheet reveal and semantic fidelity) and anonymous naturalness comparisons. Drafts autosave; server revision checks prevent silent cross-tab overwrites; saves carry idempotency IDs. Submitted items are locked. Offline drafts are retained locally and labelled upload pending, not server-saved.
+The two workflows are document quality (naturalness/realism first, then an answer-sheet reveal and semantic fidelity) and one overall naturalness choice among anonymous versions (ties allowed; comments optional). Drafts autosave; server revision checks prevent silent cross-tab overwrites; saves carry idempotency IDs. Submitted items are locked. Offline drafts are retained locally and labelled upload pending, not server-saved.
 
 Demo URLs: /review/?demo=absolute and /review/?demo=comparative.
 Demo texts are illustrative fixtures, not study documents. Demo answers stay in the browser and are excluded from the study. Authenticated TEST assignments are also marked is_test and excluded from analysis.
@@ -16,6 +16,8 @@ SETUP.txt explains dashboard and account steps. supabase/01_schema.sql and 02_te
 
 Study allocation: 54 cases, two separate groups of six anonymous reviewer slots, 18 cases per reviewer, two distinct reviewers per case per group. Comparative 18 cases means 54 variant presentations. Actual identities are not assigned by this source preparation.
 
-The human rubric is a testable draft. Do not recruit reviewers or describe collected human evidence until the coordinator confirms the procedure. Missing baseline documents remain unavailable; affected comparisons allow Cannot judge only. They are not replaced with fabricated prose.
+The human rubric is a testable draft. Do not recruit reviewers or describe collected human evidence until the coordinator confirms the procedure. Missing baseline documents remain unavailable and cannot be selected; reviewers choose among available versions or Cannot judge. Analyse these cases separately from complete three-version choices. They are not replaced with fabricated prose.
 
 Tests: node --test tests/core.test.mjs; database and browser tests use developer-only tools outside the deploy directory. No model calls are made by this website.
+
+Comparative protocol v2: preferences.best stores one or several anonymous winning labels, or ["cannot_judge"]. This measures overall preference; it does not reconstruct both former pairwise comparisons. Existing installations apply supabase/03_overall_naturalness_v2.sql before collecting comparative responses. Fresh setup_test.sql already includes v2. See REVIEW_RUBRIC.txt for the dated amendment.

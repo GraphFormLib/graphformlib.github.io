@@ -3,7 +3,7 @@ GraphFormLib review workspace — coordinator setup
 1. Database (Supabase SQL editor)
 Run the single supabase/setup_test.sql script. A successful run returns setup_status=ready, test_cases=3, test_reviewer_slots=2, test_assignments=6. The locally generated private/SETUP_ALL.sql combines those scripts and the exact study import, if desired. It contains unpublished study material: keep it private. Re-running an unchanged seed preserves existing answers; changed text/assignment imports are rejected.
 
-Only public API keys have been supplied to the assistant. They do not grant SQL administration or account creation. No database schema or user accounts have been created remotely by this implementation.
+The browser uses a publishable API key, which does not grant SQL administration or account creation. Database administration uses the separately authorized Supabase MCP connection. The coordinator project database/test fixtures were installed through Supabase MCP on 2026-11-12. No Auth accounts were created. Other installations still need the setup script.
 
 2. Test login
 In Supabase Authentication > Users, create a test user with a password and mark the email confirmed. This should not send an invitation. Copy its UUID. In the SQL editor, run:
@@ -26,3 +26,5 @@ Open /review/?demo=absolute or /review/?demo=comparative without an account to i
 In the SQL editor use the query in supabase/export_responses.sql, then download CSV. It excludes TEST accounts by default, includes exact study/case provenance, and maps anonymous pair choices back to their private condition identities. Keep the exported personal/response data private. Keep a separate downloaded backup during the study. Never publish private mappings with blind review materials.
 
 No external reviewer messages, live model calls, or recruitment are performed by this site. The initial rubric remains draft until the coordinator finishes testing it.
+
+Comparative simplification v2: an existing v1 database needs supabase/03_overall_naturalness_v2.sql, applied through MCP for the coordinator project. It changes the comparison to one overall choice with ties and an optional comment; it refuses to run if comparative responses already exist. New installations use setup_test.sql as usual. The three illustrative fixtures, study seed and reviewer allocations are unchanged.

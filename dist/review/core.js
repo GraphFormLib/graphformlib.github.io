@@ -46,14 +46,10 @@ export function validatePayload(item, payload, submit = true) {
     }
     if (submit && !item.revealed) errors.push('Review the answer sheet before submitting.');
   } else {
-    for (const pair of item.comparisons) {
-      const value = payload.preferences?.[pair.id];
-      const unavailable = [pair.left, pair.right].some(label => !item.documents.find(d => d.label === label)?.available);
-      if (submit && !value) errors.push(`Comparison ${pair.id.slice(1)}: select a response.`);
-      if (value && !['left', 'right', 'tie', 'cannot_judge'].includes(value)) errors.push('Select a valid comparison.');
-      if (unavailable && value && value !== 'cannot_judge') errors.push('Choose Cannot judge when a version is unavailable.');
-      if (submit && ['left', 'right'].includes(value) && !payload.notes?.[pair.id]?.trim()) errors.push(`Comparison ${pair.id.slice(1)}: briefly explain your preference.`);
-    }
+    const best = payload.preferences?.best ?? [];
+    const allowed = [...item.documents.filter(d => d.available).map(d => d.label), 'cannot_judge'];
+    if (!Array.isArray(best) || best.some(v => !allowed.includes(v)) || new Set(best).size !== best.length || (best.includes('cannot_judge') && best.length !== 1)) errors.push('Select available versions, or Cannot judge on its own.');
+    if (submit && !best.length) errors.push('Choose the most natural version, tied versions, or Cannot judge.');
   }
   if (Object.values(payload.notes ?? {}).some(t => t.length > 2000)) errors.push('Keep each note within 2,000 characters.');
   return errors;

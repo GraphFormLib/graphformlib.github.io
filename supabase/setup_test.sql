@@ -91,7 +91,7 @@ end $$;
 create or replace function public.review_get_case(p_assignment_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare a review_private.assignments; c review_private.cases; s review_private.responses;
-  r review_private.reviewers; docs jsonb:='[]'::jsonb; pairs jsonb:='[]'::jsonb;
+  r review_private.reviewers; docs jsonb:='[]'::jsonb;
   kind text; i integer:=0; order_names text[]; total integer;
 begin
   a:=review_private.require_assignment(p_assignment_id);
@@ -108,13 +108,10 @@ begin
       docs:=docs||jsonb_build_array(jsonb_build_object('label',chr(64+i),
         'text',c.variants->kind->>'text','available',coalesce((c.variants->kind->>'available')::boolean,false)));
     end loop;
-    pairs:=jsonb_build_array(
-      jsonb_build_object('id','p1','left',chr(64+array_position(order_names,'writer_only')),'right',chr(64+array_position(order_names,'minimal_one_shot'))),
-      jsonb_build_object('id','p2','left',chr(64+array_position(order_names,'full_pipeline')),'right',chr(64+array_position(order_names,'writer_only')))
-    );
+
   end if;
   return jsonb_build_object('id',a.assignment_id,'mode',r.review_mode,'ordinal',a.ordinal,'total',total,
-    'genre',c.genre,'documents',docs,'comparisons',pairs,'is_test',r.is_test,
+    'genre',c.genre,'documents',docs,'review_protocol',case when r.review_mode='absolute' then 'document-quality-v1' else 'overall-naturalness-v2' end,'is_test',r.is_test,
     'revision',coalesce(s.revision,0),'status',coalesce(s.status,'draft'),
     'payload',coalesce(s.payload,'{}'::jsonb),'last_request_id',s.last_request_id,'revealed',s.revealed_at is not null,
     'gold',case when r.review_mode='absolute' and s.revealed_at is not null then c.gold else null end,
@@ -123,7 +120,7 @@ end $$;
 
 create or replace function review_private.validate_payload(p_mode text,p jsonb,p_submit boolean,p_revealed boolean)
 returns void language plpgsql security definer set search_path='' as $$
-declare k text; v text; note text;
+declare k text; v text; note text; best jsonb;
 begin
   if p is null or jsonb_typeof(p)<>'object' or octet_length(p::text)>20000 then
     raise exception 'Invalid response' using errcode='22023';
@@ -148,20 +145,24 @@ begin
     if p_submit and not p_revealed then raise exception 'Answer sheet review required' using errcode='22023'; end if;
   else
     if p?'ratings' or (p?'preferences' and jsonb_typeof(p->'preferences')<>'object') then raise exception 'Invalid preferences' using errcode='22023'; end if;
-    if exists(select 1 from jsonb_object_keys(coalesce(p->'preferences','{}'::jsonb)) x where x not in ('p1','p2')) then raise exception 'Unknown comparison' using errcode='22023'; end if;
-    foreach k in array array['p1','p2'] loop
-      v:=coalesce(p->'preferences'->>k,''); note:=coalesce(p->'notes'->>k,'');
-      if v not in ('','left','right','tie','cannot_judge') then raise exception 'Invalid preference choice' using errcode='22023'; end if;
-      if p_submit and v='' then raise exception 'Complete both comparisons' using errcode='22023'; end if;
-      if p_submit and v in ('left','right') and length(btrim(note))=0 then raise exception 'Briefly explain your preference' using errcode='22023'; end if;
-    end loop;
+    if exists(select 1 from jsonb_object_keys(coalesce(p->'preferences','{}'::jsonb)) x where x<>'best') then raise exception 'Unknown preference field' using errcode='22023'; end if;
+    best:=coalesce(p->'preferences'->'best','[]'::jsonb);
+    if jsonb_typeof(best)<>'array' then raise exception 'Select versions as a list' using errcode='22023'; end if;
+    if exists(select 1 from jsonb_array_elements(best) x where jsonb_typeof(x)<>'string' or x#>>'{}' not in ('A','B','C','cannot_judge')) then
+      raise exception 'Invalid version choice' using errcode='22023';
+    end if;
+    if (select count(*)<>count(distinct value) from jsonb_array_elements_text(best))
+      or (best ? 'cannot_judge' and jsonb_array_length(best)<>1) then
+      raise exception 'Choose versions, or Cannot judge on its own' using errcode='22023';
+    end if;
+    if p_submit and jsonb_array_length(best)=0 then raise exception 'Choose the most natural version, tied versions, or Cannot judge' using errcode='22023'; end if;
   end if;
 end $$;
 
 create or replace function review_private.mutate(p_assignment_id uuid,p_payload jsonb,p_revision integer,p_request_id uuid,p_submit boolean)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare a review_private.assignments; s review_private.responses; r review_private.reviewers; c review_private.cases;
-  k text; need text[]; v text;
+  k text; v text; selected_kind text;
 begin
   a:=review_private.require_assignment(p_assignment_id);
   perform 1 from review_private.assignments where assignment_id=a.assignment_id for update;
@@ -182,11 +183,12 @@ begin
     end loop;
   end if;
   if r.review_mode='comparative' then
-    foreach k in array array['p1','p2'] loop
-      need:=case when k='p1' then array['writer_only','minimal_one_shot'] else array['full_pipeline','writer_only'] end;
-      v:=coalesce(p_payload->'preferences'->>k,'');
-      if exists(select 1 from unnest(need) n where not coalesce((c.variants->n->>'available')::boolean,false)) and v not in ('','cannot_judge') then
-        raise exception 'An unavailable version cannot receive a naturalness preference' using errcode='22023';
+    for v in select value from jsonb_array_elements_text(coalesce(p_payload->'preferences'->'best','[]'::jsonb)) loop
+      if v<>'cannot_judge' then
+        selected_kind:=a.variant_order->>(ascii(v)-ascii('A'));
+        if selected_kind is null or not coalesce((c.variants->selected_kind->>'available')::boolean,false) then
+          raise exception 'An unavailable version cannot be selected' using errcode='22023';
+        end if;
       end if;
     end loop;
   end if;

@@ -11,7 +11,8 @@ create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
 grant usage on schema auth to anon,authenticated,service_role;grant execute on function auth.uid() to anon,authenticated,service_role;
 insert into auth.users values('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002'),('00000000-0000-0000-0000-000000000003'),('00000000-0000-0000-0000-000000000004');`);
-await db.exec(await readFile(new URL('supabase/01_schema.sql', root), 'utf8'));
+await db.exec(await readFile(process.env.GFL_SCHEMA_V1 || new URL('supabase/01_schema.sql', root), 'utf8'));
+await db.exec(await readFile(new URL('supabase/03_overall_naturalness_v2.sql', root), 'utf8'));
 await db.exec(await readFile(new URL('supabase/02_test_seed.sql', root), 'utf8'));
 let studySQL;
 try { studySQL = await readFile(new URL('private/03_study_seed.sql', root), 'utf8'); }
@@ -58,19 +59,33 @@ item = await call('review_submit_case', [id, full, 2, '10000000-0000-0000-0000-0
 await rejects('submitted responses cannot be rewritten', () => call('review_save_draft', [id, full, 3, '10000000-0000-0000-0000-000000000005']));
 await role('authenticated', '00000000-0000-0000-0000-000000000003'); await rejects('another reviewer cannot retrieve this assignment', () => call('review_get_case', [id]), '42501');
 await role('authenticated', '00000000-0000-0000-0000-000000000002');
-const comparison = await call('review_list_assignments'); const cid = comparison.assignments[0].id;
-const view = await call('review_get_case', [cid]); check('comparison returns anonymous versions only', () => {
-  assert.equal(view.documents.length, 3); assert.equal(view.gold, null); assert.deepEqual(view.documents.map(d => d.label), ['A', 'B', 'C']); assert.ok(view.comparisons.every(p => ['A','B','C'].includes(p.left)));
+const comparison = await call('review_list_assignments');
+let view; for (const assignment of comparison.assignments) { view = await call('review_get_case', [assignment.id]); if (view.documents.every(d => d.available)) break; }
+const cid = view.id; check('comparison returns anonymous versions only', () => {
+  assert.equal(view.documents.length, 3); assert.equal(view.gold, null); assert.deepEqual(view.documents.map(d => d.label), ['A', 'B', 'C']); assert.equal(view.review_protocol, 'overall-naturalness-v2'); assert.ok(!('comparisons' in view));
 });
 await rejects('comparison reviewers cannot reveal answers', () => call('review_reveal_key', [cid, 0]), '42501');
-await rejects('preferred-version explanations required on submit', () => call('review_submit_case', [cid, { preferences: { p1: 'left', p2: 'tie' }, notes: {} }, 0, '10000000-0000-0000-0000-000000000006']));
+await rejects('legacy pairwise payload is not accepted as an overall choice', () => call('review_submit_case', [cid, { preferences: { p1: 'left', p2: 'tie' }, notes: {} }, 0, '10000000-0000-0000-0000-000000000006']));
+const tied = { preferences: { best: ['A','C'] }, notes: {} };
+let natural = await call('review_save_draft', [cid, tied, 0, '10000000-0000-0000-0000-000000000010']);
+check('tied most-natural versions save without a comment', () => assert.deepEqual(natural.payload.preferences.best, ['A','C']));
+natural = await call('review_save_draft', [cid, tied, 0, '10000000-0000-0000-0000-000000000010']);
+check('overall preference lost-ack retry is idempotent', () => assert.equal(natural.revision, 1));
+for (const best of [[], ['A','A'], ['A','cannot_judge'], ['D'], 'A', [1]]) await rejects('invalid overall choice rejected: '+JSON.stringify(best), () => call('review_submit_case', [cid, { preferences: { best } }, 1, '10000000-0000-0000-0000-000000000011']));
+natural = await call('review_submit_case', [cid, tied, 1, '10000000-0000-0000-0000-000000000012']);
+check('overall preference submits and resumes with no required explanation', () => assert.equal(natural.status, 'submitted'));
 await db.exec('reset role;');
 await rejects('production reviewer identity cannot change after responses', () => call('review_admin_bind_account', ['A01', '00000000-0000-0000-0000-000000000004']));
 await rejects('production identities cannot join both reviewer groups', () => call('review_admin_bind_account', ['C02', '00000000-0000-0000-0000-000000000001']), '23505');
 const missing = (await db.query(`select a.assignment_id,a.reviewer_code from review_private.assignments a join review_private.reviewers r using(reviewer_code) join review_private.cases c using(case_id) where r.review_mode='comparative' and not (c.variants->'minimal_one_shot'->>'available')::boolean limit 1`)).rows[0];
 await call('review_admin_bind_account', [missing.reviewer_code, '00000000-0000-0000-0000-000000000004']);
 await role('authenticated', '00000000-0000-0000-0000-000000000004');
-await rejects('missing baseline cannot be rated as natural text', () => call('review_save_draft', [missing.assignment_id, { preferences: { p1: 'right' }, notes: {} }, 0, '10000000-0000-0000-0000-000000000007']));
+const missingView = await call('review_get_case', [missing.assignment_id]);
+const unavailable = missingView.documents.find(d => !d.available).label;
+const available = missingView.documents.filter(d => d.available).map(d => d.label);
+await rejects('missing baseline cannot be selected as most natural', () => call('review_save_draft', [missing.assignment_id, { preferences: { best: [unavailable] } }, 0, '10000000-0000-0000-0000-000000000007']));
+const partial = await call('review_submit_case', [missing.assignment_id, { preferences: { best: available } }, 0, '10000000-0000-0000-0000-000000000013']);
+check('available versions can tie when another version is missing', () => assert.deepEqual(partial.payload.preferences.best, available));
 await db.exec('reset role;');
 const before = Number((await db.query('select count(*) n from review_private.responses')).rows[0].n);
 await db.exec(studySQL);
@@ -78,5 +93,14 @@ const after = Number((await db.query('select count(*) n from review_private.resp
 check('unchanged seed replay preserves responses', () => assert.equal(before, after));
 const rows = (await db.query("select count(*)::int n from review_private.assignments a join review_private.reviewers r using(reviewer_code) where not r.is_test")).rows[0].n;
 check('all216 study assignments imported without human observations', () => assert.equal(rows, 216));
+const exported = await db.exec(await readFile(new URL('supabase/export_responses.sql', root), 'utf8'));
+check('private response exports include the overall-choice protocol and condition mapping', () => {
+  const rows = exported[0].rows.filter(r => r.review_mode === 'comparative');
+  assert.ok(rows.length > 0); assert.ok(rows.every(r => r.review_protocol === 'overall-naturalness-v2'));
+  assert.ok(rows.every(r => r.most_natural_versions.length === r.most_natural_conditions.length));
+});
+await assert.rejects(db.exec(await readFile(new URL('supabase/03_overall_naturalness_v2.sql', root), 'utf8')));
+await db.exec('rollback;');
+check('protocol migration refuses to relabel existing comparative responses', () => assert.ok(true));
 console.log(JSON.stringify({ passed: true, checks: count, database: 'PGlite PostgreSQL', remote_database_modified: false }));
 await db.close();

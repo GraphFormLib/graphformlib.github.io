@@ -38,7 +38,7 @@ export const demoSeed = { gold, variants: {
   minimal_one_shot: { text: minimal, available: true },
 } };
 export class DemoAPI {
-  constructor(mode, storage = globalThis.localStorage) { this.mode = mode; this.storage = storage; this.key = `graphformlib-demo-${mode}-v1`; }
+  constructor(mode, storage = globalThis.localStorage) { this.mode = mode; this.storage = storage; this.key = `graphformlib-demo-${mode}-${mode === 'comparative' ? 'v2' : 'v1'}`; }
   session() { return { user: { id: `demo-${this.mode}` } }; }
   load() { try { return JSON.parse(this.storage.getItem(this.key)) ?? {}; } catch { return {}; } }
   put(value) { this.storage.setItem(this.key, JSON.stringify(value)); }
@@ -54,7 +54,7 @@ export class DemoAPI {
     return { id, ordinal: n, total: 3, mode: this.mode, genre: 'operational_email', is_test: true,
       documents: this.mode === 'absolute' ? [{ label: 'Document', available: true, text: full }] : [
         { label: 'A', text: writer, available: true }, { label: 'B', text: minimal, available: true }, { label: 'C', text: full, available: true },
-      ], comparisons: this.mode === 'absolute' ? [] : [{ id: 'p1', left: 'A', right: 'B' }, { id: 'p2', left: 'C', right: 'A' }],
+      ], review_protocol: this.mode === 'absolute' ? 'document-quality-v1' : 'overall-naturalness-v2',
       revision: saved.revision ?? 0, status: saved.status ?? 'draft', payload: saved.payload ?? blankPayload(this.mode),
       revealed: saved.revealed ?? false, gold: saved.revealed ? gold : null, saved_at: saved.saved_at ?? null,
     };

@@ -21,10 +21,16 @@ test('positive absolute responses do not require commentary', () => assert.deepE
 test('revision requests require a short note and semantic review requires a reveal', () => {
   assert.ok(validatePayload({ ...absolute, revealed: false }, { ratings: { naturalness: 'needs_revision', realism: 'acceptable', semantic_fidelity: 'acceptable' } }).length === 2);
 });
-test('missing versions cannot receive naturalness preferences', () => {
-  const item = { mode: 'comparative', documents: [{ label: 'A', available: false }, { label: 'B', available: true }], comparisons: [{ id: 'p1', left: 'A', right: 'B' }] };
-  assert.ok(validatePayload(item, { preferences: { p1: 'right' }, notes: { p1: 'Readable.' } }).length);
-  assert.deepEqual(validatePayload(item, { preferences: { p1: 'cannot_judge' } }), []);
+test('overall naturalness accepts winners and ties without mandatory notes', () => {
+  const item = { mode: 'comparative', documents: ['A', 'B', 'C'].map(label => ({ label, available: true })) };
+  for (const best of [['A'], ['A','C'], ['A','B','C'], ['cannot_judge']]) assert.deepEqual(validatePayload(item, { preferences: { best } }), []);
+  for (const best of [[], ['A','cannot_judge'], ['A','A'], ['D'], 'A']) assert.ok(validatePayload(item, { preferences: { best } }).length);
+});
+test('unavailable versions cannot win, but available versions remain comparable', () => {
+  const item = { mode: 'comparative', documents: [{ label: 'A', available: false }, { label: 'B', available: true }, { label: 'C', available: true }] };
+  assert.ok(validatePayload(item, { preferences: { best: ['A'] } }).length);
+  assert.deepEqual(validatePayload(item, { preferences: { best: ['B','C'] } }), []);
+  assert.deepEqual(validatePayload(item, { preferences: { best: ['cannot_judge'] } }), []);
 });
 test('demo hides the answer sheet until explicit initial-review reveal and resumes saved answers', async () => {
   const storage = memory(); const api = new DemoAPI('absolute', storage); const id = 'demo-absolute-1';

@@ -3,6 +3,8 @@ GraphFormLib review workspace v1
 Public website: dist/ only. Buildless HTML/CSS/ES modules; no dependency install is needed to serve it.
 Live workspace: https://graphformlib.github.io/review/ (GitHub Pages enabled with author approval).
 
+Both workflows begin with a short introduction using verbatim definitions from objective-library-v3, remembered for this reviewer/browser and always reopenable. The answer sheet repeats canonical definitions and asks whether the document reasonably supports the listed annotations; it does not require proving uniqueness. See REVIEW_RUBRIC.txt.
+
 The two workflows are document quality (naturalness/realism first, then an answer-sheet reveal and semantic fidelity) and anonymous naturalness comparisons. Drafts autosave; server revision checks prevent silent cross-tab overwrites; saves carry idempotency IDs. Submitted items are locked. Offline drafts are retained locally and labelled upload pending, not server-saved.
 
 Demo URLs: /review/?demo=absolute and /review/?demo=comparative.

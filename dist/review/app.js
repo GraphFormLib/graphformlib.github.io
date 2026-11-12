@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { SupabaseReviewAPI, blankPayload, escapeHTML as h, renderDocument, stableJSON, validatePayload, qualityNames, familyNames, genreNames } from './core.js';
 import { DemoAPI } from './demo.js';
+import { taxonomy } from './taxonomy.js';
 
 const demoMode = new URLSearchParams(location.search).get('demo');
 const demo = ['absolute', 'comparative'].includes(demoMode);
@@ -10,9 +11,27 @@ const app = document.querySelector('#app');
 const mark = `<span class="brand-mark" aria-hidden="true">G</span>`;
 const modeName = mode => mode === 'absolute' ? 'Document review' : 'Version comparison';
 const localKey = id => `graphformlib-outbox-v1:${api.session()?.user?.id ?? 'signed-out'}:${id}`;
+const guideVersion = `${taxonomy.library_version}-introduction-v1`;
+const guideKey = () => `graphformlib-taxonomy-guide:${guideVersion}:${demo ? 'demo' : api.session()?.user?.id}`;
+let guideRead = false;
+const decisionName = key => key === 'graph_object_selection' ? 'Selection' : 'Intervention';
+function hasReadGuide() { try { return guideRead || localStorage.getItem(guideKey()) === 'read'; } catch { return guideRead; } }
+
+function taxonomyContent(titleId) {
+  return `<section class="taxonomy-reference"><span class="eyebrow">A SHORT INTRODUCTION</span><h2 id="${titleId}">Understanding graph objectives</h2><p class="taxonomy-lead">An objective has three parts: the structural property, its desired direction, and the kind of decision. These are the definitions from our objective library.</p><h3>Six objective families</h3><div class="taxonomy-grid">${taxonomy.families.map(f => `<article class="taxonomy-card"><h4>${h(f.name)}</h4><p>${h(f.definition)}</p></article>`).join('')}</div><div class="taxonomy-parts"><section><h3>Two directions</h3>${Object.entries(taxonomy.directions).map(([key,value]) => `<dl><dt>${key === 'promote' ? 'Promote' : 'Reduce'}</dt><dd>${h(value)}</dd></dl>`).join('')}</section><section><h3>Two decision types</h3>${Object.entries(taxonomy.decision_types).map(([key,value]) => `<dl><dt>${decisionName(key)}</dt><dd>${h(value)}</dd></dl>`).join('')}</section></div><p class="helper">Naturalness concerns whether the communication fits its audience. Technical language can be appropriate. For annotation review, judge whether the document reasonably supports the listed meanings and objectives.</p><p class="taxonomy-source">Definitions: GraphFormLib ${h(taxonomy.library_version)}. You can reopen this guide at any time.</p></section>`;
+}
+
+function showIntroduction(first) {
+  document.querySelector('#main').innerHTML = `<div class="taxonomy-onboarding"><div id="case-messages" aria-live="polite"></div>${taxonomyContent('taxonomy-introduction-title')}<div class="taxonomy-start"><p>Read this once before starting. There is no quiz.</p><button class="button primary" id="begin-review">Start reviewing <span aria-hidden="true">→</span></button></div></div>`;
+  for (const button of document.querySelectorAll('[data-case]')) button.disabled = true;
+  document.querySelector('#begin-review').onclick = async () => {
+    guideRead = true; try { localStorage.setItem(guideKey(), 'read'); } catch { /* The current visit can continue. */ }
+    try { await openCase(first.id); window.scrollTo({ top: 0, behavior: 'instant' }); } catch (err) { showError(err); }
+  };
+}
 
 function login(message = '') {
-  clearTimeout(state.timer); state.item = null; state.payload = null; state.pending = null; state.dirty = false; state.conflict = null;
+  guideRead = false; clearTimeout(state.timer); state.item = null; state.payload = null; state.pending = null; state.dirty = false; state.conflict = null;
   app.innerHTML = `<div class="welcome"><section class="welcome-story"><a class="brand" href="../">${mark}GraphFormLib</a><div class="welcome-copy"><span class="eyebrow">REVIEW WORKSPACE</span><h1>A careful reading.<br>A better resource.</h1><p>Help us assess how clearly and naturally application documents communicate their intended graph problems.</p><div class="welcome-pills"><span>Independent judgments</span><span>Save & resume</span></div></div><div class="welcome-footer">Thank you for lending us your judgment.</div></section><main id="main" class="signin-panel"><div class="signin-card"><span class="eyebrow">FOR INVITED REVIEWERS</span><h2>Welcome back.</h2><p class="subtle">Sign in with the account supplied by the study coordinator. Your assignments and progress will be ready for you.</p><form id="signin"><label>Email<input name="email" type="email" autocomplete="username" required placeholder="Your reviewer account"></label><label>Password<input name="password" type="password" autocomplete="current-password" required placeholder="Your password"></label><div id="signin-error" class="error-message" role="alert">${h(message)}</div><button class="button primary wide" type="submit">Open my workspace <span aria-hidden="true">→</span></button></form><div class="demo-links"><span class="eyebrow">TRY THE INTERFACE</span><p>No account needed. Demo answers stay in this browser and are excluded from the study.</p><a href="?demo=absolute">Try document review <span aria-hidden="true">↗</span></a><a href="?demo=comparative">Try version comparison <span aria-hidden="true">↗</span></a></div></div></main></div>`;
   document.querySelector('#signin').addEventListener('submit', async e => {
     e.preventDefault(); const button = e.target.querySelector('button'); button.disabled = true; button.textContent = 'Signing in…';
@@ -29,6 +48,11 @@ function shell() {
     if (demo) { location.href = './'; return; }
     await api.signOut().catch(() => {}); login();
   };
+  const guideButton = document.createElement('button'); guideButton.className = 'text-button taxonomy-open'; guideButton.textContent = 'Objective taxonomy'; guideButton.type = 'button';
+  document.querySelector('.sidebar-bottom').prepend(guideButton);
+  const dialog = document.createElement('dialog'); dialog.id = 'taxonomy-dialog'; dialog.setAttribute('aria-labelledby', 'taxonomy-dialog-title');
+  dialog.innerHTML = `<div class="taxonomy-dialog-top"><button type="button" class="button secondary" id="close-taxonomy">Back to review ×</button></div>${taxonomyContent('taxonomy-dialog-title')}`;
+  app.append(dialog); guideButton.onclick = () => dialog.showModal(); document.querySelector('#close-taxonomy').onclick = () => dialog.close();
   if (demo) document.querySelector('#reset-demo').onclick = () => { if (confirm('Clear this demo’s answers? This does not affect any study response.')) { localStorage.removeItem(api.key); for (const a of state.assignments) localStorage.removeItem(localKey(a.id)); location.reload(); } };
 }
 
@@ -44,7 +68,10 @@ function sidebar() {
   const modes = [...new Set(state.assignments.map(a => a.mode))];
   document.querySelector('#mode-switch').innerHTML = modes.length > 1 ? `<label class="mode-label">Test workflow<select id="mode-select">${modes.map(m => `<option value="${m}" ${m === state.mode ? 'selected' : ''}>${modeName(m)}</option>`).join('')}</select></label>` : '';
   if (modes.length > 1) document.querySelector('#mode-select').onchange = async e => {
-    try { await flush(); state.mode = e.target.value; await openCase(state.assignments.find(a => a.mode === state.mode).id); } catch (err) { showError(err); }
+    try {
+      await flush(); state.mode = e.target.value; const first = state.assignments.find(a => a.mode === state.mode);
+      if (!hasReadGuide()) { sidebar(); showIntroduction(first); } else await openCase(first.id);
+    } catch (err) { showError(err); }
   };
 }
 
@@ -56,7 +83,12 @@ function noteField(key, required, value = '', disabled = false) {
   return `<details class="note-field" data-note-details="${key}" ${required || value ? 'open' : ''}><summary>${required ? 'Brief explanation required' : 'Add a note (optional)'}</summary><label class="sr-only" for="note-${key}">Explanation for ${h(qualityNames[key] ?? key)}</label><textarea id="note-${key}" data-note="${key}" maxlength="2000" rows="2" ${disabled ? 'disabled' : ''} placeholder="A short explanation is enough. You can include a phrase from the document.">${h(value)}</textarea></details>`;
 }
 function annotations(gold) {
-  return `<div class="answer-sheet"><span class="eyebrow">INTENDED ANSWER SHEET</span><dl><div><dt>Nodes</dt><dd>${h(gold.node_meaning)}</dd></div><div><dt>Edges</dt><dd>${h(gold.edge_meaning)}</dd></div></dl><div class="objective-list">${gold.objectives.map((o, i) => `<div class="objective"><span class="objective-number">${i + 1}</span><div><strong>${h(familyNames[o.objective_family] ?? o.objective_family)}</strong><span>${o.direction === 'promote' ? 'Promote' : 'Reduce'} <span aria-hidden="true">·</span> ${o.decision_type === 'graph_object_selection' ? 'Selection' : 'Intervention'}</span></div></div>`).join('')}</div><p class="helper">Check the intended meaning, rather than identical wording. Each objective specifies its family, direction and decision type, and should be a genuinely requested outcome rather than background information or an incidental consequence.</p></div>`;
+  const directions = [...new Set(gold.objectives.map(o => o.direction))];
+  const decisions = [...new Set(gold.objectives.map(o => o.decision_type))];
+  return `<div class="answer-sheet"><span class="eyebrow">INTENDED ANSWER SHEET</span><dl><div><dt>Nodes</dt><dd>${h(gold.node_meaning)}</dd></div><div><dt>Edges</dt><dd>${h(gold.edge_meaning)}</dd></div></dl><div class="objective-list">${gold.objectives.map((o, i) => {
+    const family = taxonomy.families.find(f => f.objective_family_id === o.objective_family);
+    return `<div class="objective"><span class="objective-number">${i + 1}</span><div><strong>${h(family?.name ?? familyNames[o.objective_family] ?? o.objective_family)}</strong><p class="objective-definition">${h(family?.definition ?? '')}</p><span>${o.direction === 'promote' ? 'Promote' : 'Reduce'} <span aria-hidden="true">·</span> ${decisionName(o.decision_type)}</span></div></div>`;
+  }).join('')}</div><div class="tuple-definitions"><span class="eyebrow">DIRECTION AND DECISION LABELS</span><dl>${directions.map(key => `<div><dt>${key === 'promote' ? 'Promote' : 'Reduce'}</dt><dd>${h(taxonomy.directions[key])}</dd></div>`).join('')}${decisions.map(key => `<div><dt>${decisionName(key)}</dt><dd>${h(taxonomy.decision_types[key])}</dd></div>`).join('')}</dl></div><p class="helper">Judge whether the document reasonably supports these annotations. An implicit but understandable request is acceptable.</p></div>`;
 }
 
 function renderCase() {
@@ -64,7 +96,7 @@ function renderCase() {
   const all = state.assignments.filter(a => a.mode === state.mode); const index = all.findIndex(a => a.id === item.id);
   let body;
   if (item.mode === 'absolute') {
-    body = `<div class="absolute-layout"><article class="document-card"><div class="card-top"><span class="eyebrow">DOCUMENT</span><span class="pill">${h(genreNames[item.genre] ?? item.genre)}</span></div><div class="document-body">${renderDocument(item.documents[0].text)}</div></article><section class="assessment-card"><div class="section-heading"><span class="step">1</span><div><h2>Your first reading</h2><p>Read the document before viewing its annotations.</p></div></div>${rating('naturalness', 'Does this read like appropriate communication for its genre and audience?', locked || item.revealed)}${rating('realism', 'Does the actor’s decision and requested outcome make sense in this setting?', locked || item.revealed)}${item.revealed ? `<div class="phase-divider"><span class="step">2</span><div><h2>Check the intended modeling</h2><p>Your initial ratings are now locked.</p></div></div>${annotations(item.gold)}${rating('semantic_fidelity', 'Does the document support these node/edge meanings and every objective, without a materially competing interpretation?', locked)}` : `<div class="reveal-panel"><span class="step">2</span><div><h2>Then check the answer sheet</h2><p>Choose both initial ratings, then reveal the intended annotations.</p><button id="reveal" class="button secondary">Reveal answer sheet <span aria-hidden="true">↓</span></button></div></div>`}</section></div>`;
+    body = `<div class="absolute-layout"><article class="document-card"><div class="card-top"><span class="eyebrow">DOCUMENT</span><span class="pill">${h(genreNames[item.genre] ?? item.genre)}</span></div><div class="document-body">${renderDocument(item.documents[0].text)}</div></article><section class="assessment-card"><div class="section-heading"><span class="step">1</span><div><h2>Your first reading</h2><p>Read the document before viewing its annotations.</p></div></div>${rating('naturalness', 'Does this read like appropriate communication for its genre and audience?', locked || item.revealed)}${rating('realism', 'Does the actor’s decision and requested outcome make sense in this setting?', locked || item.revealed)}${item.revealed ? `<div class="phase-divider"><span class="step">2</span><div><h2>Check the intended modeling</h2><p>Your initial ratings are now locked.</p></div></div>${annotations(item.gold)}${rating('semantic_fidelity', 'Does the document reasonably support the listed node/edge meanings and objectives?', locked)}` : `<div class="reveal-panel"><span class="step">2</span><div><h2>Then check the answer sheet</h2><p>Choose both initial ratings, then reveal the intended annotations.</p><button id="reveal" class="button secondary">Reveal answer sheet <span aria-hidden="true">↓</span></button></div></div>`}</section></div>`;
   } else {
     body = `<div class="comparison-intro"><p>Read all three versions. Compare how naturally they communicate the request for the stated genre. Consider wording, organization and unnecessary exposition. Ties are welcome.</p><div class="version-tabs" role="tablist" aria-label="Document versions">${item.documents.map((d, i) => `<button role="tab" id="tab-${d.label}" aria-controls="version-${d.label}" aria-selected="${i === 0}" data-tab="${d.label}">Version ${d.label}</button>`).join('')}</div></div><div class="version-grid">${item.documents.map((d, i) => `<article class="document-card version-card ${i === 0 ? 'mobile-active' : ''}" id="version-${d.label}" aria-labelledby="tab-${d.label}"><div class="card-top"><span class="version-badge">${d.label}</span><span class="pill">${h(genreNames[item.genre] ?? item.genre)}</span></div><div class="document-body">${d.available ? renderDocument(d.text) : '<div class="unavailable"><h3>Version unavailable</h3><p>No document was delivered for this version. Choose Cannot judge for a comparison involving it.</p></div>'}</div></article>`).join('')}</div><section class="comparative-ratings"><div class="section-heading"><span class="step">✓</span><div><h2>Which reads more naturally?</h2><p>Compare each pair. A brief reason is enough when you prefer one.</p></div></div><div class="pair-grid">${item.comparisons.map(pair => {
       const value = state.payload.preferences?.[pair.id] ?? ''; const note = state.payload.notes?.[pair.id] ?? '';
@@ -184,6 +216,7 @@ async function openCase(id) {
 }
 
 async function navigate(id) {
+  if (!hasReadGuide()) return;
   if (!id || state.navigating || id === state.item?.id) return;
   state.navigating = true;
   try { await flush(); await openCase(id); window.scrollTo({ top: 0, behavior: 'instant' }); }
@@ -216,7 +249,9 @@ async function start() {
     document.querySelector('#workspace-title').textContent = 'Review workspace'; document.querySelector('#reload-assignments').onclick = () => start().catch(showError); return;
   }
   const requested = decodeURIComponent(location.hash.slice(1));
-  const first = state.assignments.find(a => a.id === requested) ?? state.assignments.find(a => a.status !== 'submitted') ?? state.assignments[0]; state.mode = first.mode; await openCase(first.id);
+  const first = state.assignments.find(a => a.id === requested) ?? state.assignments.find(a => a.status !== 'submitted') ?? state.assignments[0]; state.mode = first.mode;
+  sidebar();
+  if (!hasReadGuide()) showIntroduction(first); else await openCase(first.id);
 }
 
 window.addEventListener('online', () => { if (state.dirty || state.pending) flush().catch(showError); });

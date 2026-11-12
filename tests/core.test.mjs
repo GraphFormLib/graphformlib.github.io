@@ -2,8 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderDocument, stableJSON, validatePayload, SupabaseReviewAPI } from '../dist/review/core.js';
 import { DemoAPI } from '../dist/review/demo.js';
+import { taxonomy } from '../dist/review/taxonomy.js';
 const memory = () => { const values = new Map(); return { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v), removeItem: k => values.delete(k) }; };
 const absolute = { mode: 'absolute', revealed: true };
+test('reviewer taxonomy contains all six canonical families, directions and decision types with source binding', () => {
+  assert.equal(taxonomy.library_version, 'objective-library-v3'); assert.match(taxonomy.source_sha256, /^[a-f0-9]{64}$/);
+  assert.deepEqual(taxonomy.families.map(f => f.objective_family_id).sort(), ['centrality','community_separation','density','path_distance','reachability','robustness']);
+  assert.deepEqual(Object.keys(taxonomy.directions).sort(), ['promote','reduce']);
+  assert.deepEqual(Object.keys(taxonomy.decision_types).sort(), ['graph_intervention','graph_object_selection']);
+  assert.ok(taxonomy.families.every(f => f.definition && f.direction_semantics.promote && f.direction_semantics.reduce));
+});
 test('document rendering escapes active HTML while retaining ordinary headings and bullets', () => {
   const html = renderDocument('## Review\n\n<img src=x onerror=alert(1)>\n\n- **A**\n- B');
   assert.ok(html.includes('&lt;img')); assert.ok(!html.includes('<img')); assert.ok(html.includes('<h3>Review</h3>')); assert.ok(html.includes('<strong>A</strong>')); assert.equal((html.match(/<ul>/g) ?? []).length, 1);

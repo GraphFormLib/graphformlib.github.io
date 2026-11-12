@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderDocument, stableJSON, validatePayload, SupabaseReviewAPI } from '../dist/review/core.js';
-import { DemoAPI } from '../dist/review/demo.js';
+import { DemoAPI, demoCases } from '../dist/review/demo.js';
 import { taxonomy } from '../dist/review/taxonomy.js';
 const memory = () => { const values = new Map(); return { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v), removeItem: k => values.delete(k) }; };
 const absolute = { mode: 'absolute', revealed: true };
@@ -53,4 +53,22 @@ test('API uses only browser key plus reviewer token, and recognizes an uninitial
 test('network failures never produce false saved acknowledgments', async () => {
   const api = new SupabaseReviewAPI({ supabaseUrl: 'https://example.invalid', publishableKey: 'x' }, memory(), async () => { throw new Error('offline'); });
   await assert.rejects(api.request('/test', {}), e => e.code === 'network');
+});
+
+test('three demo cases have distinct documents, genres, annotations and anonymous orders', async () => {
+  const storage = memory(); storage.setItem('graphformlib-demo-absolute-v1', JSON.stringify({ 1: { status: 'submitted' } }));
+  const api = new DemoAPI('absolute', storage);
+  const listing = await api.list();
+  assert.equal(new Set(listing.assignments.map(a => a.genre)).size, 3);
+  const texts = [];
+  for (let i = 0; i < 3; i++) {
+    const id = listing.assignments[i].id;
+    const item = await api.get(id); assert.equal(item.status, 'draft'); texts.push(item.documents[0].text);
+    await api.save(id, { ratings: { naturalness: 'acceptable', realism: 'acceptable' } }, 0, 'fixture-'+i);
+    const revealed = await api.reveal(id, 1); assert.deepEqual(revealed.gold, demoCases[i].gold);
+    const comparison = await new DemoAPI('comparative', memory()).get('demo-comparative-'+(i+1));
+    assert.deepEqual(comparison.documents.map(d => d.text), demoCases[i].variant_order.map(k => demoCases[i].variants[k].text));
+  }
+  assert.equal(new Set(texts).size, 3);
+  assert.deepEqual(demoCases.map(c => c.gold.objectives.length).sort(), [1,2,3]);
 });

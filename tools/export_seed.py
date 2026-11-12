@@ -57,16 +57,16 @@ commit;
 
 def test_seed():
     source = SITE / 'dist/review/demo.js'
-    command = ['node', '--input-type=module', '-e', f"import {{demoSeed}} from {json.dumps(source.as_uri())}; process.stdout.write(JSON.stringify(demoSeed));"]
-    fixture = json.loads(subprocess.check_output(command, text=True))
+    command = ['node', '--input-type=module', '-e', f"import {{demoCases}} from {json.dumps(source.as_uri())}; process.stdout.write(JSON.stringify(demoCases));"]
+    fixtures = json.loads(subprocess.check_output(command, text=True))
     reviewers = [dict(reviewer_code='TEST-A', review_mode='absolute', is_test=True), dict(reviewer_code='TEST-C', review_mode='comparative', is_test=True)]
     cases = []; assignments = []
-    for n in range(1, 4):
-        cid = uid(f'test-case-{n}')
-        cases.append(dict(case_id=cid, study_version='interface-test-v1', genre='operational_email', **fixture, provenance={'fixture': True}, is_test=True))
+    for n, fixture in enumerate(fixtures, 1):
+        cid = uid(f'test-v3-case-{n}')
+        cases.append(dict(case_id=cid, study_version='interface-test-v3', genre=fixture['genre'], gold=fixture['gold'], variants=fixture['variants'], provenance={'fixture': True, 'fixture_id': fixture['fixture_id'], 'fixture_version': 3}, is_test=True))
         for r in reviewers:
-            assignments.append(dict(assignment_id=uid(f"test-{r['reviewer_code']}-{n}"), reviewer_code=r['reviewer_code'], case_id=cid, ordinal=n,
-                                    variant_order=['writer_only', 'minimal_one_shot', 'full_pipeline']))
+            assignments.append(dict(assignment_id=uid(f"test-v3-{r['reviewer_code']}-{n}"), reviewer_code=r['reviewer_code'], case_id=cid, ordinal=n,
+                                    variant_order=fixture['variant_order']))
     return dict(reviewers=reviewers, cases=cases, assignments=assignments)
 
 

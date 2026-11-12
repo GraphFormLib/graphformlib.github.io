@@ -69,12 +69,12 @@ try {
   await page.waitForFunction(() => document.querySelector('#save-indicator').textContent.includes('Saved in this browser')); ok('pending save resumes on reconnect');
   // A deliberate lost acknowledgment: the pending request ID is reused after reload.
   await page.evaluate(() => {
-    const key = 'graphformlib-outbox-v1:demo-absolute:demo-absolute-2';
-    const saved = JSON.parse(localStorage.getItem('graphformlib-demo-absolute-v1'))[2];
+    const key = 'graphformlib-outbox-v1:demo-absolute-fixtures-v3:demo-absolute-2';
+    const saved = JSON.parse(localStorage.getItem('graphformlib-demo-absolute-fixtures-v3'))[2];
     localStorage.setItem(key, JSON.stringify({ revision: saved.revision - 1, payload: { ...saved.payload, notes: { naturalness: 'Local note after a lost acknowledgment.' } }, pending: { id: 'demo-absolute-2', payload: saved.payload, revision: saved.revision - 1, requestId: saved.requestId, submit: false } }));
   });
   await page.reload(); await page.waitForFunction(() => document.querySelector('#save-indicator')?.textContent.includes('Saved in this browser'));
-  const recovered = await page.evaluate(() => JSON.parse(localStorage.getItem('graphformlib-demo-absolute-v1'))[2]);
+  const recovered = await page.evaluate(() => JSON.parse(localStorage.getItem('graphformlib-demo-absolute-fixtures-v3'))[2]);
   assert.equal(recovered.payload.notes.naturalness, 'Local note after a lost acknowledgment.'); ok('lost-save acknowledgment recovers without losing newer local notes');
   await page.goto(base + '/review/?demo=comparative'); await page.locator('.version-card').first().waitFor();
   assert.equal(await page.locator('#begin-review').count(), 0); ok('taxonomy introduction is remembered across the two demo workflows');
@@ -95,6 +95,14 @@ try {
   await page.reload(); await page.locator('.case-state.submitted').waitFor();
   assert.ok(await page.locator('[data-best="A"]').isDisabled());
   ok('single overall preference supports ties, autosave, reload and submission without a comment');
+  const firstComparison = await page.locator('.version-grid').innerText();
+  await page.getByRole('button', { name: 'Next case →' }).click(); await page.locator('.version-card').first().waitFor();
+  const secondComparison = await page.locator('.version-grid').innerText();
+  assert.notEqual(firstComparison,secondComparison); assert.ok(secondComparison.includes('Maya:'));
+  await page.getByRole('button', { name: 'Next case →' }).click(); await page.locator('.version-card').first().waitFor();
+  const thirdComparison = await page.locator('.version-grid').innerText();
+  assert.notEqual(secondComparison,thirdComparison); assert.notEqual(firstComparison,thirdComparison);
+  assert.ok(thirdComparison.includes('Riverside')); ok('all three case buttons lead to different scenarios and genres');
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   const phone = await mobile.newPage(); phone.on('pageerror', e => errors.push(e.message));
   await phone.goto(base + '/review/?demo=comparative'); await phone.getByRole('button', { name: /Start reviewing/ }).waitFor();

@@ -13,6 +13,16 @@ grant usage on schema auth to anon,authenticated,service_role;grant execute on f
 insert into auth.users values('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002'),('00000000-0000-0000-0000-000000000003'),('00000000-0000-0000-0000-000000000004');`);
 await db.exec(await readFile(process.env.GFL_SCHEMA_V1 || new URL('supabase/01_schema.sql', root), 'utf8'));
 await db.exec(await readFile(new URL('supabase/03_overall_naturalness_v2.sql', root), 'utf8'));
+if (process.env.GFL_TEST_SEED_V1) {
+  await db.exec(await readFile(process.env.GFL_TEST_SEED_V1, 'utf8'));
+  await db.exec(await readFile(new URL('supabase/04_distinct_test_fixtures_v3.sql', root), 'utf8'));
+  const rows = (await db.query(`select c.study_version,c.genre,c.gold,c.variants from review_private.assignments a join review_private.cases c using(case_id) where a.reviewer_code='TEST-A' order by a.ordinal`)).rows;
+  assert.equal(rows.length,3); assert.equal(new Set(rows.map(r=>r.genre)).size,3);
+  assert.equal(new Set(rows.map(r=>r.variants.full_pipeline.text)).size,3);
+  assert.ok(rows.every(r=>r.study_version==='interface-test-v3'));
+  assert.equal(Number((await db.query("select count(*) n from review_private.cases where study_version='interface-test-v1'")).rows[0].n),3);
+  console.log('PASS distinct fixture migration retains old cases and installs three different active examples');
+}
 await db.exec(await readFile(new URL('supabase/02_test_seed.sql', root), 'utf8'));
 let studySQL;
 try { studySQL = await readFile(new URL('private/03_study_seed.sql', root), 'utf8'); }

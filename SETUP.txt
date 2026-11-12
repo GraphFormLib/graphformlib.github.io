@@ -28,3 +28,5 @@ In the SQL editor use the query in supabase/export_responses.sql, then download 
 No external reviewer messages, live model calls, or recruitment are performed by this site. The initial rubric remains draft until the coordinator finishes testing it.
 
 Comparative simplification v2: an existing v1 database needs supabase/03_overall_naturalness_v2.sql, applied through MCP for the coordinator project. It changes the comparison to one overall choice with ties and an optional comment; it refuses to run if comparative responses already exist. New installations use setup_test.sql as usual. The three illustrative fixtures, study seed and reviewer allocations are unchanged.
+
+Distinct test fixtures v3: fresh setup installs three different genres/scenarios. An existing test database uses supabase/04_distinct_test_fixtures_v3.sql, applied through MCP for the coordinator project. It preserves old fixture rows, changes only unanswered TEST assignments, and leaves production material unchanged. Test reviewer codes remain TEST-A/TEST-C. The readiness count refers to active interface-test-v3 cases.

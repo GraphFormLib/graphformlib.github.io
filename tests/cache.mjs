@@ -31,14 +31,14 @@ try {
   await page.goto(url);
   await page.getByText('Compare each pair.', { exact: true }).waitFor();
   legacy = false;
-  await page.goto(url + '&v=20261112-overall-v2');
+  await page.goto(url + '&v=20261112-fixtures-v3');
   await page.getByRole('button', { name: /Start reviewing/ }).click();
   await page.locator('[data-best="A"]').waitFor();
   assert.equal(await page.locator('[data-best]').count(), 4);
   assert.equal(await page.locator('[data-preference]').count(), 0);
   for (const name of ['app.js','core.js','demo.js','config.js','taxonomy.js']) {
     assert.equal(requests.filter(x => x === `/review/${name}`).length, 1, `Old ${name} must remain cached`);
-    assert.ok(requests.includes(`/review/${name}?v=20261112-overall-v2`), `${name} needs a versioned URL`);
+    assert.ok(requests.includes(`/review/${name}?v=20261112-fixtures-v3`), `${name} needs a versioned URL`);
   }
   await page.locator('[data-best="A"]').check();
   await page.getByRole('button', { name: /Submit this case/ }).click();

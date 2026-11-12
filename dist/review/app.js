@@ -1,7 +1,7 @@
-import { config } from './config.js';
-import { SupabaseReviewAPI, blankPayload, escapeHTML as h, renderDocument, stableJSON, validatePayload, qualityNames, familyNames, genreNames } from './core.js';
-import { DemoAPI } from './demo.js';
-import { taxonomy } from './taxonomy.js';
+import { config } from './config.js?v=20261112-overall-v2';
+import { SupabaseReviewAPI, blankPayload, escapeHTML as h, renderDocument, stableJSON, validatePayload, qualityNames, familyNames, genreNames } from './core.js?v=20261112-overall-v2';
+import { DemoAPI } from './demo.js?v=20261112-overall-v2';
+import { taxonomy } from './taxonomy.js?v=20261112-overall-v2';
 
 const demoMode = new URLSearchParams(location.search).get('demo');
 const demo = ['absolute', 'comparative'].includes(demoMode);

@@ -1,5 +1,5 @@
 // Illustrative interface fixtures only. These are not study documents or observations.
-import { blankPayload, validatePayload, ReviewError } from './core.js';
+import { blankPayload, validatePayload, ReviewError } from './core.js?v=20261112-overall-v2';
 const gold = { node_meaning: 'web page', edge_meaning: 'one page contains a direct hyperlink to another page', objectives: [
   { objective_family: 'centrality', direction: 'promote', decision_type: 'graph_object_selection' },
   { objective_family: 'path_distance', direction: 'reduce', decision_type: 'graph_object_selection' },

@@ -21,3 +21,5 @@ The human rubric is a testable draft. Do not recruit reviewers or describe colle
 Tests: node --test tests/core.test.mjs; database and browser tests use developer-only tools outside the deploy directory. No model calls are made by this website.
 
 Comparative protocol v2: preferences.best stores one or several anonymous winning labels, or ["cannot_judge"]. This measures overall preference; it does not reconstruct both former pairwise comparisons. Existing installations apply supabase/03_overall_naturalness_v2.sql before collecting comparative responses. Fresh setup_test.sql already includes v2. See REVIEW_RUBRIC.txt for the dated amendment.
+
+Deployment caching: index.html pins CSS and the complete browser-module import graph to a release query version. Bump that version when browser code changes. GitHub Pages can cache an older HTML response for 600 seconds; a versioned demo page URL retrieves the new entry point immediately.

@@ -1,7 +1,7 @@
 GraphFormLib review workspace v1
 
 Public website: dist/ only. Buildless HTML/CSS/ES modules; no dependency install is needed to serve it.
-Target: https://graphformlib.github.io/review/ after GitHub Pages is enabled.
+Live workspace: https://graphformlib.github.io/review/ (GitHub Pages enabled with author approval).
 
 The two workflows are document quality (naturalness/realism first, then an answer-sheet reveal and semantic fidelity) and anonymous naturalness comparisons. Drafts autosave; server revision checks prevent silent cross-tab overwrites; saves carry idempotency IDs. Submitted items are locked. Offline drafts are retained locally and labelled upload pending, not server-saved.
 

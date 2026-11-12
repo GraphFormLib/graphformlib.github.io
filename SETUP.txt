@@ -1,7 +1,7 @@
 GraphFormLib review workspace — coordinator setup
 
 1. Database (Supabase SQL editor)
-Run supabase/01_schema.sql followed by supabase/02_test_seed.sql. The locally generated private/SETUP_ALL.sql combines those scripts and the exact study import, if desired. It contains unpublished study material: keep it private. Re-running an unchanged seed preserves existing answers; changed text/assignment imports are rejected.
+Run the single supabase/setup_test.sql script. A successful run returns setup_status=ready, test_cases=3, test_reviewer_slots=2, test_assignments=6. The locally generated private/SETUP_ALL.sql combines those scripts and the exact study import, if desired. It contains unpublished study material: keep it private. Re-running an unchanged seed preserves existing answers; changed text/assignment imports are rejected.
 
 Only public API keys have been supplied to the assistant. They do not grant SQL administration or account creation. No database schema or user accounts have been created remotely by this implementation.
 

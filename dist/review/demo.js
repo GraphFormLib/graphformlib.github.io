@@ -1,6 +1,6 @@
 // Illustrative interface fixtures only. These are not study documents or observations.
-import { blankPayload, validatePayload, ReviewError } from './core.js?v=20261112-fixtures-v3';
-import { demoCases } from './fixtures.js?v=20261112-fixtures-v3';
+import { blankPayload, validatePayload, ReviewError } from './core.js?v=20261112-clean-links-v4';
+import { demoCases } from './fixtures.js?v=20261112-clean-links-v4';
 export { demoCases };
 export const demoSeed = { gold: demoCases[0].gold, variants: demoCases[0].variants };
 export class DemoAPI {

@@ -27,7 +27,10 @@ try {
   const context = await browser.newContext({ viewport: { width: 1512, height: 1050 }, deviceScaleFactor: 1 });
   const page = await context.newPage(); const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto(base + '/review/'); await page.getByRole('heading', { name: 'Welcome back.' }).waitFor();
+  await page.goto(base + '/review/?v=obsolete&keep=1#resume-me'); await page.getByRole('heading', { name: 'Welcome back.' }).waitFor();
+  assert.equal(new URL(page.url()).search, '?keep=1'); assert.equal(new URL(page.url()).hash, '#resume-me');
+  for (const link of await page.locator('.demo-links a').evaluateAll(links => links.map(a => a.href))) assert.equal(new URL(link).searchParams.has('v'), false);
+  ok('old version tags disappear while other URL parameters and resume hashes are preserved');
   await page.screenshot({ path: resolve(screenshots, 'signin.png'), fullPage: true }); ok('sign-in and both demo links render');
   await page.goto(base + '/review/?demo=absolute'); await page.getByRole('heading', { name: 'Understanding graph objectives' }).waitFor();
   assert.equal(await page.locator('#main .taxonomy-card').count(), 6); assert.equal(await page.locator('.document-body').count(), 0);

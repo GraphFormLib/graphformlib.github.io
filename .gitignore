@@ -1,0 +1,7 @@
+node_modules/
+private/
+*.env
+.env*
+*.credentials*
+__pycache__/
+screenshots/

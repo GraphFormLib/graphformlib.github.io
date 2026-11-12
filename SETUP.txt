@@ -1,0 +1,28 @@
+GraphFormLib review workspace — coordinator setup
+
+1. Database (Supabase SQL editor)
+Run supabase/01_schema.sql followed by supabase/02_test_seed.sql. The locally generated private/SETUP_ALL.sql combines those scripts and the exact study import, if desired. It contains unpublished study material: keep it private. Re-running an unchanged seed preserves existing answers; changed text/assignment imports are rejected.
+
+Only public API keys have been supplied to the assistant. They do not grant SQL administration or account creation. No database schema or user accounts have been created remotely by this implementation.
+
+2. Test login
+In Supabase Authentication > Users, create a test user with a password and mark the email confirmed. This should not send an invitation. Copy its UUID. In the SQL editor, run:
+  select public.review_admin_bind_account('TEST-A', 'PASTE-USER-UUID');
+  select public.review_admin_bind_account('TEST-C', 'PASTE-USER-UUID');
+The same test account can try both workflows. Test answers are excluded from all study exports.
+
+Alternatively, run tools/create_account.py --reviewer TEST --email YOUR-EMAIL locally. It securely prompts for the Supabase secret key and a chosen password. Neither is saved or printed; it creates a preconfirmed account and sends no email. Do not paste the secret key or passwords into chat, a GitHub issue, or the repository.
+
+3. Reviewer accounts (later)
+Bind six different people to A01..A06 and another six people to C01..C06. Each receives 18 cases; each case has two reviews per group. The database forbids sharing a production identity between reviewer slots. Use the helper with the corresponding --reviewer code, or create preconfirmed accounts in the dashboard and bind their UUIDs in SQL. Disable public user signups in Supabase Auth settings. Unassigned accounts have no access to study documents.
+
+4. GitHub Pages
+The GraphFormLib organization currently uses GitHub Free and the repository is private. Publishing through Pages requires author approval to make the interface-source repository public (or a supported plan change). The public code includes only the interface, illustrative fixtures and schema/setup tooling. Keep private/ and runtime artifacts excluded. In repository Settings > Pages, choose GitHub Actions. Run the manually triggered Publish review interface workflow. It deploys dist/ only.
+
+5. Try the website
+Open /review/?demo=absolute or /review/?demo=comparative without an account to inspect the interface. After database setup, sign in with the TEST account and verify a real save, refresh, resume from another browser, answer-sheet reveal, and submission. You can switch test workflows from the sidebar. Test responses must not be analysed as human observations.
+
+6. Export and backup
+In the SQL editor use the query in supabase/export_responses.sql, then download CSV. It excludes TEST accounts by default, includes exact study/case provenance, and maps anonymous pair choices back to their private condition identities. Keep the exported personal/response data private. Keep a separate downloaded backup during the study. Never publish private mappings with blind review materials.
+
+No external reviewer messages, live model calls, or recruitment are performed by this site. The initial rubric remains draft until the coordinator finishes testing it.

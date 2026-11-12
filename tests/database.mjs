@@ -1,0 +1,82 @@
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { demoSeed } from '../dist/review/demo.js';
+const qa = process.env.GFL_QA_ROOT;
+const { PGlite } = await import(qa ? `${qa}/node_modules/@electric-sql/pglite/dist/index.js` : '@electric-sql/pglite');
+const db = new PGlite();
+const root = new URL('../', import.meta.url);
+await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;
+create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema auth to anon,authenticated,service_role;grant execute on function auth.uid() to anon,authenticated,service_role;
+insert into auth.users values('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002'),('00000000-0000-0000-0000-000000000003'),('00000000-0000-0000-0000-000000000004');`);
+await db.exec(await readFile(new URL('supabase/01_schema.sql', root), 'utf8'));
+await db.exec(await readFile(new URL('supabase/02_test_seed.sql', root), 'utf8'));
+let studySQL;
+try { studySQL = await readFile(new URL('private/03_study_seed.sql', root), 'utf8'); }
+catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+  // Public-source tests use fictional fixtures. Real study data stays private.
+  const reviewers = ['A','C'].flatMap(g => Array.from({ length: 6 }, (_, i) => ({ reviewer_code: `${g}${String(i+1).padStart(2,'0')}`, review_mode: g === 'A' ? 'absolute' : 'comparative', is_test: false })));
+  const cases = Array.from({ length: 54 }, (_, i) => ({ case_id: `20000000-0000-0000-0000-${String(i+1).padStart(12,'0')}`, study_version: 'synthetic-database-test', genre: 'operational_email', gold: demoSeed.gold, variants: { ...demoSeed.variants, ...(i === 0 ? { minimal_one_shot: { text: null, available: false } } : {}) }, is_test: false }));
+  const assignments = []; const ordinal = new Map();
+  for (let i=0;i<54;i++) for (const g of ['A','C']) for (const n of [i%6,(i+1)%6]) {
+    const code=`${g}${String(n+1).padStart(2,'0')}`; ordinal.set(code,(ordinal.get(code)??0)+1);
+    assignments.push({ assignment_id: `30000000-0000-0000-0000-${String(assignments.length+1).padStart(12,'0')}`, reviewer_code: code, case_id: cases[i].case_id, ordinal: ordinal.get(code), variant_order: ['writer_only','minimal_one_shot','full_pipeline'] });
+  }
+  studySQL = `insert into review_private.reviewers select reviewer_code,review_mode,null,is_test,true from jsonb_to_recordset($s$${JSON.stringify(reviewers)}$s$) x(reviewer_code text,review_mode text,is_test boolean) on conflict do nothing;
+  insert into review_private.cases select case_id,study_version,genre,gold,variants,'{}'::jsonb,is_test from jsonb_to_recordset($s$${JSON.stringify(cases)}$s$) x(case_id uuid,study_version text,genre text,gold jsonb,variants jsonb,is_test boolean) on conflict do nothing;
+  insert into review_private.assignments select * from jsonb_to_recordset($s$${JSON.stringify(assignments)}$s$) x(assignment_id uuid,reviewer_code text,case_id uuid,ordinal int,variant_order jsonb) on conflict do nothing;`;
+}
+await db.exec(studySQL);
+await db.exec(`select public.review_admin_bind_account('A01','00000000-0000-0000-0000-000000000001');select public.review_admin_bind_account('A02','00000000-0000-0000-0000-000000000003');select public.review_admin_bind_account('C01','00000000-0000-0000-0000-000000000002');`);
+let count = 0;
+const check = (name, test) => { test(); count++; console.log('PASS', name); };
+const role = async (name, uid = '') => { await db.exec(`reset role;set role ${name};`); await db.query("select set_config('request.jwt.claim.sub',$1,false)", [uid]); };
+const call = async (name, args = []) => (await db.query(`select public.${name}(${args.map((_, i) => '$' + (i + 1)).join(',')}) as value`, args)).rows[0].value;
+const rejects = async (name, operation, code) => { await assert.rejects(operation, e => !code || e.code === code); count++; console.log('PASS', name); };
+await role('anon'); await rejects('anonymous users cannot list assignments', () => call('review_list_assignments'), '42501');
+await role('authenticated', '00000000-0000-0000-0000-000000000001');
+await rejects('client cannot read private tables', () => db.query('select * from review_private.responses'), '42501');
+await rejects('client cannot bind accounts', () => call('review_admin_bind_account', ['A02', '00000000-0000-0000-0000-000000000001']), '42501');
+const listing = await call('review_list_assignments'); check('only own eighteen assignments returned', () => assert.equal(listing.assignments.length, 18));
+const id = listing.assignments[0].id; let item = await call('review_get_case', [id]);
+check('canonical key unavailable before initial review', () => assert.equal(item.gold, null));
+check('no private provenance is returned', () => assert.ok(!('case_id' in item) && !('provenance' in item) && !('reviewer_code' in item)));
+await rejects('premature reveal rejected', () => call('review_reveal_key', [id, 0]));
+await rejects('unexpected payload fields rejected', () => call('review_save_draft', [id, { injected: true }, 0, '10000000-0000-0000-0000-000000000099']));
+const payload = { ratings: { naturalness: 'acceptable', realism: 'acceptable' }, notes: {} };
+const req = '10000000-0000-0000-0000-000000000001';
+item = await call('review_save_draft', [id, payload, 0, req]); check('initial draft saved with revision', () => assert.equal(item.revision, 1));
+item = await call('review_save_draft', [id, payload, 0, req]); check('lost-ack retry is idempotent', () => assert.equal(item.revision, 1));
+await rejects('stale-tab write cannot overwrite saved draft', () => call('review_save_draft', [id, payload, 0, '10000000-0000-0000-0000-000000000002']), '40001');
+item = await call('review_reveal_key', [id, 1]); check('explicit reveal returns key and increments revision', () => assert.ok(item.gold && item.revision === 2));
+await rejects('initial ratings cannot change after key reveal', () => call('review_save_draft', [id, { ratings: { naturalness: 'needs_revision', realism: 'acceptable' } }, 2, '10000000-0000-0000-0000-000000000003']));
+const full = { ratings: { naturalness: 'acceptable', realism: 'acceptable', semantic_fidelity: 'acceptable' }, notes: {} };
+item = await call('review_submit_case', [id, full, 2, '10000000-0000-0000-0000-000000000004']); check('submission persisted', () => assert.equal(item.status, 'submitted'));
+await rejects('submitted responses cannot be rewritten', () => call('review_save_draft', [id, full, 3, '10000000-0000-0000-0000-000000000005']));
+await role('authenticated', '00000000-0000-0000-0000-000000000003'); await rejects('another reviewer cannot retrieve this assignment', () => call('review_get_case', [id]), '42501');
+await role('authenticated', '00000000-0000-0000-0000-000000000002');
+const comparison = await call('review_list_assignments'); const cid = comparison.assignments[0].id;
+const view = await call('review_get_case', [cid]); check('comparison returns anonymous versions only', () => {
+  assert.equal(view.documents.length, 3); assert.equal(view.gold, null); assert.deepEqual(view.documents.map(d => d.label), ['A', 'B', 'C']); assert.ok(view.comparisons.every(p => ['A','B','C'].includes(p.left)));
+});
+await rejects('comparison reviewers cannot reveal answers', () => call('review_reveal_key', [cid, 0]), '42501');
+await rejects('preferred-version explanations required on submit', () => call('review_submit_case', [cid, { preferences: { p1: 'left', p2: 'tie' }, notes: {} }, 0, '10000000-0000-0000-0000-000000000006']));
+await db.exec('reset role;');
+await rejects('production reviewer identity cannot change after responses', () => call('review_admin_bind_account', ['A01', '00000000-0000-0000-0000-000000000004']));
+await rejects('production identities cannot join both reviewer groups', () => call('review_admin_bind_account', ['C02', '00000000-0000-0000-0000-000000000001']), '23505');
+const missing = (await db.query(`select a.assignment_id,a.reviewer_code from review_private.assignments a join review_private.reviewers r using(reviewer_code) join review_private.cases c using(case_id) where r.review_mode='comparative' and not (c.variants->'minimal_one_shot'->>'available')::boolean limit 1`)).rows[0];
+await call('review_admin_bind_account', [missing.reviewer_code, '00000000-0000-0000-0000-000000000004']);
+await role('authenticated', '00000000-0000-0000-0000-000000000004');
+await rejects('missing baseline cannot be rated as natural text', () => call('review_save_draft', [missing.assignment_id, { preferences: { p1: 'right' }, notes: {} }, 0, '10000000-0000-0000-0000-000000000007']));
+await db.exec('reset role;');
+const before = Number((await db.query('select count(*) n from review_private.responses')).rows[0].n);
+await db.exec(studySQL);
+const after = Number((await db.query('select count(*) n from review_private.responses')).rows[0].n);
+check('unchanged seed replay preserves responses', () => assert.equal(before, after));
+const rows = (await db.query("select count(*)::int n from review_private.assignments a join review_private.reviewers r using(reviewer_code) where not r.is_test")).rows[0].n;
+check('all216 study assignments imported without human observations', () => assert.equal(rows, 216));
+console.log(JSON.stringify({ passed: true, checks: count, database: 'PGlite PostgreSQL', remote_database_modified: false }));
+await db.close();

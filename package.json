@@ -1,0 +1,1 @@
+{"name":"graphformlib-review-workspace","private":true,"type":"module","scripts":{"test":"node --test tests/core.test.mjs","test:db":"node tests/database.mjs","test:browser":"node tests/browser.mjs"},"devDependencies":{"@electric-sql/pglite":"0.5.16","playwright-core":"1.65.0"}}
